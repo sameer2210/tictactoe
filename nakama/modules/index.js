@@ -139,8 +139,8 @@ const matchLoop = function(ctx, logger, nk, dispatcher, tick, state, messages) {
       if (winner !== 'draw') {
         const winnerId = state.players.find(id => state.symbols[id] === winner)
         const loserId  = state.players.find(id => state.symbols[id] !== winner)
-        if (winnerId) nk.leaderboardRecordWrite('tictactoe_wins',   winnerId, state.usernames[winnerId], 1, {})
-        if (loserId)  nk.leaderboardRecordWrite('tictactoe_losses', loserId,  state.usernames[loserId],  1, {})
+        if (winnerId) nk.leaderboardRecordWrite('tictactoe_wins',   winnerId, state.usernames[winnerId], 1, 0, {})
+        if (loserId)  nk.leaderboardRecordWrite('tictactoe_losses', loserId,  state.usernames[loserId],  1, 0, {})
       }
 
       dispatcher.broadcastMessage(OP_GAMEOVER, JSON.stringify({
@@ -200,10 +200,10 @@ var InitModule = function(ctx, logger, nk, initializer) {
   initializer.registerMatchmakerMatched(matchmakerMatched)
 
   try {
-    nk.leaderboardCreate('tictactoe_wins',   true, 'desc', 'incr', {})
-    nk.leaderboardCreate('tictactoe_losses', true, 'desc', 'incr', {})
+    nk.leaderboardCreate('tictactoe_wins',   true, 'desc', 'incr', null, {})
+    nk.leaderboardCreate('tictactoe_losses', true, 'desc', 'incr', null, {})
   } catch(e) {
-    logger.info('Leaderboards already exist')
+    logger.info('Leaderboards already exist or failed: ' + e.message)
   }
 
   logger.info('TicTacToe module loaded!')

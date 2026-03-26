@@ -78,8 +78,14 @@ export function useNakama(): UseNakamaReturn {
       // 4. Listen for match state updates from server
       socket.onmatchdata = (data) => {
         const payload = JSON.parse(new TextDecoder().decode(data.data))
+        console.log('Nakama: OP_STATE received', data.op_code, payload)
 
         if (data.op_code === OP_STATE) {
+          // Sync server-assigned symbols if they provide it in the payload
+          if (payload.symbols && myUserIdRef.current) {
+            mySymbolRef.current = payload.symbols[myUserIdRef.current]
+          }
+
           // Server sent updated board state
           setGameState(prev => ({
             board: payload.board,
@@ -173,6 +179,10 @@ export function useNakama(): UseNakamaReturn {
   const sendMove = (cellIndex: number) => {
     if (!socketRef.current || !matchIdRef.current) {
       console.warn('Nakama: not in a match')
+      return
+    }
+    if (gameState?.winner) {
+      console.warn('Nakama: game is already over! Ignoring click.')
       return
     }
     const payload = new TextEncoder().encode(JSON.stringify({ cell: cellIndex }))
