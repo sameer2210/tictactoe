@@ -44,6 +44,11 @@ export function useNakama(): UseNakamaReturn {
   const mySymbolRef = useRef<'X' | 'O' | null>(null)
 
   const connect = async (username: string) => {
+    if (clientRef.current) {
+      console.log('Nakama: already connected/connecting, skipping...')
+      return
+    }
+
     try {
       setStatus('connecting')
 
