@@ -14,16 +14,22 @@ export default function GameOver({ gameState, leaderboard, username, onPlayAgain
   const isDraw = winner === 'draw'
   const waitingForOpponent = gameState.rematchRequestedByMe && !gameState.opponentWantsRematch
   const opponentReadyFirst = !gameState.rematchRequestedByMe && gameState.opponentWantsRematch
+  const resultMark = winner === 'draw' ? '=' : winner ?? mySymbol
+  const resultTitle = didWin ? 'WINNER!' : isDraw ? 'DRAW' : 'DEFEAT'
+  const pointsText = didWin ? '+200 pts' : isDraw ? '+80 pts' : '+0 pts'
 
   return (
-    <div className="flex flex-col items-center gap-6 p-8 bg-gray-900 rounded-2xl w-80 shadow-xl">
-      <div className={`text-5xl font-black ${
-        didWin ? 'text-yellow-400' : isDraw ? 'text-gray-400' : 'text-red-400'
-      }`}>
-        {didWin ? '🏆 Win!' : isDraw ? 'Draw' : 'Lost'}
+    <section className="screen screen-gameover">
+      <div className={`result-mark ${didWin ? 'result-win' : isDraw ? 'result-draw' : 'result-loss'}`}>
+        {resultMark}
       </div>
 
-      <p className="text-gray-400 text-sm text-center">
+      <div className="result-line">
+        <span className="result-title">{resultTitle}</span>
+        <span className="result-points">{pointsText}</span>
+      </div>
+
+      <p className="result-subtitle">
         {didWin ? `You beat ${opponentName}!`
           : isDraw ? 'No winner this time'
           : `${opponentName} won this round`}
@@ -32,23 +38,23 @@ export default function GameOver({ gameState, leaderboard, username, onPlayAgain
       <Leaderboard entries={leaderboard} currentUsername={username} />
 
       {opponentReadyFirst && (
-        <p className="text-xs text-teal-300 text-center">
+        <p className="rematch-note rematch-note-opp">
           {opponentName} wants to play again.
         </p>
       )}
 
       {waitingForOpponent && (
-        <p className="text-xs text-purple-300 text-center">
+        <p className="rematch-note rematch-note-me">
           Waiting for {opponentName} to accept rematch...
         </p>
       )}
 
       <button
-        className="w-full bg-purple-600 hover:bg-purple-500 transition-colors rounded-lg py-2 font-semibold"
+        className="play-again-btn"
         onClick={onPlayAgain}
       >
         {waitingForOpponent ? 'Waiting for opponent... (tap again)' : 'Play again'}
       </button>
-    </div>
+    </section>
   )
 }

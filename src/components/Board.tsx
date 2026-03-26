@@ -6,10 +6,11 @@ import Cell from './Cell'
 interface Props {
   gameState: GameState
   nakama: ReturnType<typeof useNakama>
+  username: string
   onGameOver: () => void
 }
 
-export default function Board({ gameState, nakama, onGameOver }: Props) {
+export default function Board({ gameState, nakama, username, onGameOver }: Props) {
   const { sendMove, status } = nakama
   const isMyTurn = gameState.currentTurn === gameState.mySymbol
 
@@ -25,35 +26,26 @@ export default function Board({ gameState, nakama, onGameOver }: Props) {
     sendMove(index)  // send to Nakama — server validates and broadcasts back
   }
 
+  const opponentSymbol = gameState.mySymbol === 'X' ? 'O' : 'X'
+
   return (
-    <div className="flex flex-col items-center gap-6 p-8 bg-gray-900 rounded-2xl shadow-xl">
-      {/* Header */}
-      <div className="flex justify-between w-full text-sm text-gray-400">
-        <span className="text-purple-400 font-semibold">
-          You ({gameState.mySymbol})
-        </span>
-        <span>vs</span>
-        <span className="text-teal-400 font-semibold">
-          {gameState.opponentName}
-        </span>
+    <section className="screen screen-board">
+      <header className="board-players">
+        <div className="board-player">
+          <span className="board-player-name">{(username || 'You').toUpperCase()}</span>
+          <span className="board-player-meta">(you) {gameState.mySymbol}</span>
+        </div>
+        <div className="board-player">
+          <span className="board-player-name">{gameState.opponentName.toUpperCase()}</span>
+          <span className="board-player-meta">(opp) {opponentSymbol}</span>
+        </div>
+      </header>
+
+      <div className="board-turn">
+        {gameState.currentTurn} Turn
       </div>
 
-      {/* Turn indicator */}
-      <div className={`text-sm font-medium px-4 py-1 rounded-full ${
-        isMyTurn ? 'bg-purple-900 text-purple-300' : 'bg-gray-800 text-gray-400'
-      }`}>
-        {isMyTurn ? 'Your turn' : `${gameState.opponentName}'s turn`}
-      </div>
-
-      {/* Timer */}
-      <div className={`text-2xl font-bold tabular-nums ${
-        gameState.timeLeft <= 10 ? 'text-red-400' : 'text-gray-300'
-      }`}>
-        {gameState.timeLeft}s
-      </div>
-
-      {/* Grid */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="game-grid" role="grid" aria-label="Tic tac toe board">
         {gameState.board.map((cell, i) => (
           <Cell
             key={i}
@@ -64,6 +56,19 @@ export default function Board({ gameState, nakama, onGameOver }: Props) {
           />
         ))}
       </div>
-    </div>
+
+      <div className="board-footer">
+        <span className="turn-chip">
+          {isMyTurn ? 'Your move' : `${gameState.opponentName}'s move`}
+        </span>
+        <span className={`timer-chip ${gameState.timeLeft <= 10 ? 'timer-danger' : ''}`}>
+          {gameState.timeLeft}s
+        </span>
+      </div>
+
+      <button type="button" className="leave-room-btn" disabled>
+        Leave room (2)
+      </button>
+    </section>
   )
 }
