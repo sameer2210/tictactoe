@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function Cell({ value, index, isMyTurn, onClick }: Props) {
-  const isEmpty = value === null
+  const isEmpty = !value
   const canClick = isEmpty && isMyTurn
 
   return (

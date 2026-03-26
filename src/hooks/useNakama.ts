@@ -51,11 +51,16 @@ export function useNakama(): UseNakamaReturn {
       const client = new Client(NAKAMA_KEY, NAKAMA_HOST, NAKAMA_PORT, USE_SSL)
       clientRef.current = client
 
-      // Use sessionStorage so each tab gets a unique ID
-      const deviceId = sessionStorage.getItem('nakama_device_id') || crypto.randomUUID()
-      sessionStorage.setItem('nakama_device_id', deviceId)
+      const existingDeviceId = sessionStorage.getItem('nakama_device_id')
+      let deviceId = existingDeviceId
+      let uniqueUsername: string | undefined = undefined
 
-      const uniqueUsername = username + '_' + deviceId.slice(0, 6)
+      if (!deviceId) {
+        deviceId = crypto.randomUUID()
+        sessionStorage.setItem('nakama_device_id', deviceId)
+        uniqueUsername = username + '_' + deviceId.slice(0, 6)
+      }
+
       const session = await client.authenticateDevice(deviceId, true, uniqueUsername)
       sessionRef.current = session
       myUserIdRef.current = session.user_id ?? null
@@ -103,8 +108,8 @@ export function useNakama(): UseNakamaReturn {
   try {
     console.log('Nakama: matchmaker matched:', JSON.stringify(matched))
 
-    // Join using token — NOT match_id
-    const match = await socket.joinMatch(undefined, matched.token)
+    // Join using match_id from server
+    const match = await socket.joinMatch(matched.match_id, matched.token)
     console.log('Nakama: joined match', match.match_id)
     matchIdRef.current = match.match_id
 

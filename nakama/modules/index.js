@@ -176,16 +176,28 @@ const matchSignal = function(ctx, logger, nk, dispatcher, tick, state, data) {
   return { state }
 }
 
-function InitModule(ctx, logger, nk, initializer) {
+const matchmakerMatched = function(ctx, logger, nk, matches) {
+  try {
+    const matchId = nk.matchCreate('tictactoe', {})
+    return matchId
+  } catch (error) {
+    logger.error('Error creating match: %q', error)
+    throw error
+  }
+}
+
+var InitModule = function(ctx, logger, nk, initializer) {
   initializer.registerMatch('tictactoe', {
-    matchInit,
-    matchJoinAttempt,
-    matchJoin,
-    matchLeave,
-    matchLoop,
-    matchTerminate,
-    matchSignal,
+    matchInit: matchInit,
+    matchJoinAttempt: matchJoinAttempt,
+    matchJoin: matchJoin,
+    matchLeave: matchLeave,
+    matchLoop: matchLoop,
+    matchTerminate: matchTerminate,
+    matchSignal: matchSignal,
   })
+
+  initializer.registerMatchmakerMatched(matchmakerMatched)
 
   try {
     nk.leaderboardCreate('tictactoe_wins',   true, 'desc', 'incr', {})
