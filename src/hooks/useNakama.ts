@@ -129,20 +129,17 @@ export function useNakama(): UseNakamaReturn {
     const presenceList = users.map((u: any) => u.presence)
     console.log('Nakama: presences', JSON.stringify(presenceList))
 
-    // Find my symbol using session_id from matched.self
-    const mySessionId = matched.self?.presence?.session_id
-    const myIndex = presenceList.findIndex(
-      (p: any) => p.session_id === mySessionId
-    )
-    mySymbolRef.current = myIndex === 0 ? 'X' : 'O'
-
+    // Do NOT guess X or O based on index, as Nakama's array order is random per client!
+    // The server's OP_STATE will definitively assign mySymbolRef.current.
+    
     // Get opponent
+    const mySessionId = matched.self?.presence?.session_id
     const opponent = presenceList.find(
       (p: any) => p.session_id !== mySessionId
     ) as any
 
-    console.log('Nakama: I am', mySymbolRef.current)
     console.log('Nakama: opponent', opponent?.username)
+    console.log('Nakama: I am (pending OP_STATE)', mySymbolRef.current)
 
     setGameState({
       board: Array(9).fill(null),
