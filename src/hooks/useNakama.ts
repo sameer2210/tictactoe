@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Client, Session } from '@heroiclabs/nakama-js'
-import type { Socket } from '@heroiclabs/nakama-js'
+import type { LeaderboardRecord, MatchmakerMatched, Presence, Socket } from '@heroiclabs/nakama-js'
 import type { GameState, LeaderboardEntry } from '../types/game'
 
 const NAKAMA_HOST = 'localhost'
@@ -13,6 +13,7 @@ const OP_MOVE     = 1
 const OP_STATE    = 2
 const OP_TIMER    = 3
 const OP_GAMEOVER = 4
+const OP_REMATCH  = 5
 
 export type ConnectionStatus =
   | 'idle'
@@ -28,6 +29,7 @@ export interface UseNakamaReturn {
   leaderboard: LeaderboardEntry[]
   connect: (username: string) => Promise<void>
   sendMove: (cellIndex: number) => void
+  requestRematch: () => void
   disconnect: () => void
 }
 
@@ -42,6 +44,23 @@ export function useNakama(): UseNakamaReturn {
   const matchIdRef = useRef<string | null>(null)
   const myUserIdRef = useRef<string | null>(null)
   const mySymbolRef = useRef<'X' | 'O' | null>(null)
+
+  const applyRematchReadyPlayers = (readyPlayers: string[] | undefined) => {
+    if (!Array.isArray(readyPlayers)) return
+
+    setGameState(prev => {
+      if (!prev || !myUserIdRef.current) return prev
+
+      const rematchRequestedByMe = readyPlayers.includes(myUserIdRef.current)
+      const opponentWantsRematch = readyPlayers.some((id) => id !== myUserIdRef.current)
+
+      return {
+        ...prev,
+        rematchRequestedByMe,
+        opponentWantsRematch,
+      }
+    })
+  }
 
   const connect = async (username: string) => {
     if (clientRef.current) {
@@ -75,6 +94,16 @@ export function useNakama(): UseNakamaReturn {
       const socket = client.createSocket(USE_SSL, false)
       socketRef.current = socket
 
+      socket.ondisconnect = (event) => {
+        console.warn('Nakama: socket disconnected', event)
+        setStatus('error')
+      }
+
+      socket.onerror = (event) => {
+        console.error('Nakama: socket error', event)
+        setStatus('error')
+      }
+
       // 4. Listen for match state updates from server
       socket.onmatchdata = (data) => {
         const payload = JSON.parse(new TextDecoder().decode(data.data))
@@ -86,15 +115,25 @@ export function useNakama(): UseNakamaReturn {
             mySymbolRef.current = payload.symbols[myUserIdRef.current]
           }
 
+          const usernames = payload.usernames as Record<string, string> | undefined
+          const opponentNameFromPayload =
+            usernames && myUserIdRef.current
+              ? Object.entries(usernames).find(([userId]) => userId !== myUserIdRef.current)?.[1]
+              : undefined
+
           // Server sent updated board state
           setGameState(prev => ({
             board: payload.board,
             currentTurn: payload.currentTurn,
-            winner: null,
-            mySymbol: mySymbolRef.current ?? 'X',
-            opponentName: prev?.opponentName ?? 'Opponent',
+            winner: payload.winner ?? null,
+            mySymbol: mySymbolRef.current ?? prev?.mySymbol ?? 'X',
+            opponentName: opponentNameFromPayload ?? prev?.opponentName ?? 'Opponent',
             timeLeft: payload.timeLeft,
+            rematchRequestedByMe: false,
+            opponentWantsRematch: false,
           }))
+
+          setStatus('in_match')
         }
 
         if (data.op_code === OP_TIMER) {
@@ -106,57 +145,63 @@ export function useNakama(): UseNakamaReturn {
           // Game ended
           setGameState(prev => prev ? {
             ...prev,
-            board: payload.board,
+            board: payload.board ?? prev.board,
             winner: payload.winner,
+            rematchRequestedByMe: false,
+            opponentWantsRematch: false,
           } : prev)
           setStatus('gameover')
           fetchLeaderboard(client, session)
         }
+
+        if (data.op_code === OP_REMATCH) {
+          applyRematchReadyPlayers(payload.readyPlayers as string[] | undefined)
+        }
       }
 
       // 5. Listen for when matchmaker finds a match
-      socket.onmatchmakermatched = async (matched) => {
-  try {
-    console.log('Nakama: matchmaker matched:', JSON.stringify(matched))
+      socket.onmatchmakermatched = async (matched: MatchmakerMatched) => {
+        try {
+          console.log('Nakama: matchmaker matched:', JSON.stringify(matched))
 
-    // Join using match_id from server
-    const match = await socket.joinMatch(matched.match_id, matched.token)
-    console.log('Nakama: joined match', match.match_id)
-    matchIdRef.current = match.match_id
+          // Join using match_id from server
+          const match = await socket.joinMatch(matched.match_id, matched.token)
+          console.log('Nakama: joined match', match.match_id)
+          matchIdRef.current = match.match_id
 
-    // Parse presences from matched.users
-    const users = matched.users ?? []
-    const presenceList = users.map((u: any) => u.presence)
-    console.log('Nakama: presences', JSON.stringify(presenceList))
+          // Parse presences from matched.users
+          const users = matched.users ?? []
+          const presenceList: Presence[] = users.map((u) => u.presence)
+          console.log('Nakama: presences', JSON.stringify(presenceList))
 
-    // Do NOT guess X or O based on index, as Nakama's array order is random per client!
-    // The server's OP_STATE will definitively assign mySymbolRef.current.
-    
-    // Get opponent
-    const mySessionId = matched.self?.presence?.session_id
-    const opponent = presenceList.find(
-      (p: any) => p.session_id !== mySessionId
-    ) as any
+          // Do NOT guess X or O based on index, as Nakama's array order is random per client!
+          // The server's OP_STATE will definitively assign mySymbolRef.current.
 
-    console.log('Nakama: opponent', opponent?.username)
-    console.log('Nakama: I am (pending OP_STATE)', mySymbolRef.current)
+          // Get opponent
+          const mySessionId = matched.self?.presence?.session_id
+          const opponent = presenceList.find((p) => p.session_id !== mySessionId)
 
-    setGameState({
-      board: Array(9).fill(null),
-      currentTurn: 'X',
-      winner: null,
-      mySymbol: mySymbolRef.current ?? 'X',
-      opponentName: opponent?.username ?? 'Opponent',
-      timeLeft: 30,
-    })
+          console.log('Nakama: opponent', opponent?.username)
+          console.log('Nakama: I am (pending OP_STATE)', mySymbolRef.current)
 
-    setStatus('in_match')
+          setGameState({
+            board: Array(9).fill(null),
+            currentTurn: 'X',
+            winner: null,
+            mySymbol: mySymbolRef.current ?? 'X',
+            opponentName: opponent?.username ?? 'Opponent',
+            timeLeft: 30,
+            rematchRequestedByMe: false,
+            opponentWantsRematch: false,
+          })
 
-  } catch (err) {
-    console.error('Nakama: failed to join match:', err)
-    setStatus('error')
-  }
-}
+          setStatus('in_match')
+
+        } catch (err) {
+          console.error('Nakama: failed to join match:', err)
+          setStatus('error')
+        }
+      }
 
       await socket.connect(session, true)
       console.log('Nakama: socket connected')
@@ -183,18 +228,49 @@ export function useNakama(): UseNakamaReturn {
       return
     }
     const payload = new TextEncoder().encode(JSON.stringify({ cell: cellIndex }))
-    socketRef.current.sendMatchState(matchIdRef.current, OP_MOVE, payload)
-    console.log('Nakama: move sent', cellIndex)
+    void socketRef.current
+      .sendMatchState(matchIdRef.current, OP_MOVE, payload)
+      .then(() => {
+        console.log('Nakama: move sent', cellIndex)
+      })
+      .catch((err) => {
+        console.error('Nakama: failed to send move', err)
+        setStatus('error')
+      })
+  }
+
+  const requestRematch = () => {
+    if (!socketRef.current || !matchIdRef.current) {
+      console.warn('Nakama: cannot request rematch, match not available')
+      return
+    }
+
+    if (!gameState?.winner) {
+      console.warn('Nakama: rematch is only available after game over')
+      return
+    }
+
+    setGameState(prev => prev && !prev.rematchRequestedByMe ? { ...prev, rematchRequestedByMe: true } : prev)
+    const payload = new TextEncoder().encode(JSON.stringify({ request: true }))
+    void socketRef.current
+      .sendMatchState(matchIdRef.current, OP_REMATCH, payload)
+      .then(() => {
+        console.log('Nakama: rematch requested')
+      })
+      .catch((err) => {
+        console.error('Nakama: failed to request rematch', err)
+        setStatus('error')
+      })
   }
 
   // Fetch leaderboard after game ends
   const fetchLeaderboard = async (client: Client, session: Session) => {
     try {
       const result = await client.listLeaderboardRecords(session, 'tictactoe_wins', [], 10)
-      const entries: LeaderboardEntry[] = (result.records ?? []).map((r: any, i: number) => ({
+      const entries: LeaderboardEntry[] = (result.records ?? []).map((r: LeaderboardRecord, i: number) => ({
         rank: i + 1,
         username: r.username ?? 'Unknown',
-        wins: parseInt(r.score ?? '0'),
+        wins: Number(r.score ?? 0),
         losses: 0,
       }))
       setLeaderboard(entries)
@@ -213,11 +289,42 @@ export function useNakama(): UseNakamaReturn {
     mySymbolRef.current = null
     setStatus('idle')
     setGameState(null)
+    setLeaderboard([])
   }
+
+  // Retry rematch requests in case the first packet is dropped.
+  useEffect(() => {
+    if (
+      status !== 'gameover' ||
+      !gameState?.winner ||
+      !gameState.rematchRequestedByMe ||
+      gameState.opponentWantsRematch ||
+      !socketRef.current ||
+      !matchIdRef.current
+    ) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (!socketRef.current || !matchIdRef.current) return
+      const retryPayload = new TextEncoder().encode(JSON.stringify({ request: true, retry: true }))
+      void socketRef.current
+        .sendMatchState(matchIdRef.current, OP_REMATCH, retryPayload)
+        .then(() => {
+          console.log('Nakama: rematch request retried')
+        })
+        .catch((err) => {
+          console.error('Nakama: rematch retry failed', err)
+          setStatus('error')
+        })
+    }, 2500)
+
+    return () => { window.clearInterval(intervalId) }
+  }, [status, gameState?.winner, gameState?.rematchRequestedByMe, gameState?.opponentWantsRematch])
 
   useEffect(() => {
     return () => { disconnect() }
   }, [])
 
-  return { status, gameState, leaderboard, connect, sendMove, disconnect }
+  return { status, gameState, leaderboard, connect, sendMove, requestRematch, disconnect }
 }

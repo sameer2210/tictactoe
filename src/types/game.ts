@@ -15,6 +15,8 @@ export interface GameState {
   mySymbol: Player        // are you X or O?
   opponentName: string
   timeLeft: number        // 30 second timer
+  rematchRequestedByMe: boolean
+  opponentWantsRematch: boolean
 }
 
 export interface LeaderboardEntry {

@@ -10,6 +10,12 @@ function App() {
   const [screen, setScreen]   = useState<GameStatus>('lobby')
   const [username, setUsername] = useState('')
   const nakama = useNakama()
+  const showBoard =
+    Boolean(nakama.gameState) &&
+    (
+      screen === 'playing' ||
+      (screen === 'gameover' && nakama.status === 'in_match' && !nakama.gameState?.winner)
+    )
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
@@ -31,7 +37,7 @@ function App() {
         />
       )}
 
-      {screen === 'playing' && nakama.gameState && (
+      {showBoard && nakama.gameState && (
         <Board
           gameState={nakama.gameState}
           nakama={nakama}
@@ -39,14 +45,13 @@ function App() {
         />
       )}
 
-      {screen === 'gameover' && nakama.gameState && (
+      {screen === 'gameover' && nakama.status === 'gameover' && nakama.gameState && (
         <GameOver
           gameState={nakama.gameState}
           leaderboard={nakama.leaderboard}
           username={username}
           onPlayAgain={() => {
-            nakama.disconnect()
-            setScreen('matchmaking')
+            nakama.requestRematch()
           }}
         />
       )}

@@ -8,6 +8,7 @@ const OP_MOVE     = 1
 const OP_STATE    = 2
 const OP_TIMER    = 3
 const OP_GAMEOVER = 4
+const OP_REMATCH  = 5
 
 function checkWinner(board) {
   for (const [a, b, c] of WINNING_LINES) {
@@ -30,6 +31,8 @@ const matchInit = function(ctx, logger, nk, params) {
       usernames: {},
       winner: null,
       timeLeft: 30,
+      rematchReady: {},
+      stateSyncTicks: 0,
     },
     tickRate: 1,
     label: 'tictactoe'
@@ -54,7 +57,11 @@ const matchJoin = function(ctx, logger, nk, dispatcher, tick, state, presences) 
     state.symbols[state.players[0]] = 'X'
     state.symbols[state.players[1]] = 'O'
     state.currentTurn = state.players[0]
+    state.board = Array(9).fill('')
+    state.winner = null
     state.timeLeft = 30
+    state.rematchReady = {}
+    state.stateSyncTicks = 2
 
     const payload = JSON.stringify({
       board: state.board,
@@ -78,20 +85,79 @@ const matchLeave = function(ctx, logger, nk, dispatcher, tick, state, presences)
       const remainingId = state.players.find(id => id !== presence.userId)
       if (remainingId) {
         state.winner = state.symbols[remainingId]
+        state.rematchReady = {}
         dispatcher.broadcastMessage(OP_GAMEOVER, JSON.stringify({
           winner: state.winner,
           reason: 'opponent_disconnected'
         }))
       }
     }
+    delete state.rematchReady[presence.userId]
     state.players = state.players.filter(id => id !== presence.userId)
   }
   return { state }
 }
 
 const matchLoop = function(ctx, logger, nk, dispatcher, tick, state, messages) {
-  if (state.winner) return null
   if (state.players.length < 2) return { state }
+
+  if (state.winner) {
+    let rematchUpdated = false
+
+    for (const msg of messages) {
+      if (msg.opCode !== OP_REMATCH) continue
+      if (!state.players.includes(msg.sender.userId)) continue
+
+      if (!state.rematchReady[msg.sender.userId]) {
+        state.rematchReady[msg.sender.userId] = true
+        rematchUpdated = true
+        logger.info(state.usernames[msg.sender.userId] + ' requested rematch')
+      }
+    }
+
+    if (!rematchUpdated) return { state }
+
+    const readyPlayers = state.players.filter(id => state.rematchReady[id])
+    dispatcher.broadcastMessage(OP_REMATCH, JSON.stringify({ readyPlayers }))
+
+    if (readyPlayers.length === 2) {
+      const nextStarter =
+        state.players.find(id => id !== state.currentTurn) ||
+        state.currentTurn ||
+        state.players[0]
+
+      state.board = Array(9).fill('')
+      state.winner = null
+      state.currentTurn = nextStarter
+      state.timeLeft = 30
+      state.rematchReady = {}
+      state.stateSyncTicks = 2
+
+      dispatcher.broadcastMessage(OP_STATE, JSON.stringify({
+        board: state.board,
+        currentTurn: state.symbols[state.currentTurn],
+        symbols: state.symbols,
+        usernames: state.usernames,
+        timeLeft: state.timeLeft,
+        winner: null,
+      }))
+      logger.info('Rematch started')
+    }
+
+    return { state }
+  }
+
+  if (state.stateSyncTicks > 0) {
+    dispatcher.broadcastMessage(OP_STATE, JSON.stringify({
+      board: state.board,
+      currentTurn: state.symbols[state.currentTurn],
+      symbols: state.symbols,
+      usernames: state.usernames,
+      timeLeft: state.timeLeft,
+      winner: null,
+    }))
+    state.stateSyncTicks -= 1
+  }
 
   // Timer tick
   state.timeLeft -= 1
@@ -135,6 +201,7 @@ const matchLoop = function(ctx, logger, nk, dispatcher, tick, state, messages) {
 
     if (winner) {
       state.winner = winner
+      state.rematchReady = {}
 
       if (winner !== 'draw') {
         const winnerId = state.players.find(id => state.symbols[id] === winner)
@@ -148,6 +215,7 @@ const matchLoop = function(ctx, logger, nk, dispatcher, tick, state, messages) {
         winner,
         symbols: state.symbols,
         usernames: state.usernames,
+        readyPlayers: [],
       }))
       return { state }
     }

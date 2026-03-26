@@ -18,7 +18,7 @@ export default function Board({ gameState, nakama, onGameOver }: Props) {
     if (status === 'gameover' || gameState.winner) {
       onGameOver()
     }
-  }, [status, gameState.winner])
+  }, [status, gameState.winner, onGameOver])
 
   const handleMove = (index: number) => {
     if (!isMyTurn || gameState.board[index] || gameState.winner) return
