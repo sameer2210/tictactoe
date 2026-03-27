@@ -3,10 +3,10 @@ import { Client, Session } from '@heroiclabs/nakama-js'
 import type { LeaderboardRecord, MatchmakerMatched, Presence, Socket } from '@heroiclabs/nakama-js'
 import type { GameState, LeaderboardEntry } from '../types/game'
 
-const NAKAMA_HOST = 'tictactoe-production-37b9.up.railway.app';
-const NAKAMA_PORT = '443'
-const NAKAMA_KEY  = 'defaultkey'
-const USE_SSL     = true
+const NAKAMA_HOST = import.meta.env.VITE_NAKAMA_HOST ?? 'tictactoe-production-37b9.up.railway.app'
+const NAKAMA_PORT = import.meta.env.VITE_NAKAMA_PORT ?? '443'
+const NAKAMA_KEY = import.meta.env.VITE_NAKAMA_KEY ?? 'defaultkey'
+const USE_SSL = (import.meta.env.VITE_NAKAMA_USE_SSL ?? 'true').toLowerCase() === 'true'
 
 // Opcodes must match tictactoe.js
 const OP_MOVE     = 1
